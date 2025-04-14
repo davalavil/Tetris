@@ -29,7 +29,7 @@
             padding: 20px;
             border-radius: 10px;
             text-align: center;
-             z-index: 10; /* Asegurar que esté visible */
+            z-index: 10; /* Asegurar que esté visible */
         }
          #instructions {
             position: absolute;
@@ -38,14 +38,20 @@
             color: lightgray;
             font-family: sans-serif;
             font-size: 14px;
-             z-index: 10; /* Asegurar que esté visible */
+            z-index: 10; /* Asegurar que esté visible */
         }
-        #game-over button {
+        #game-over button { /* Estilo para el botón */
             font-size: 20px;
             padding: 10px 20px;
             margin-top: 15px;
             cursor: pointer;
+            background-color: #ddd;
+            border: 1px solid #aaa;
+            border-radius: 5px;
         }
+         #game-over button:hover {
+             background-color: #eee;
+         }
     </style>
 </head>
 <body>
@@ -53,6 +59,7 @@
     <div id="game-over">
         GAME OVER
         <br>
+        <!-- Este botón ya existía, nos aseguramos que llame a la función correcta -->
         <button onclick="reiniciarJuego()">Reiniciar</button>
     </div>
      <div id="instructions">
@@ -60,10 +67,9 @@
     </div>
 
     <!-- Carga Three.js de forma tradicional desde un CDN -->
-    <!-- Es importante que esto esté ANTES de tetris.js -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
-    <!-- Carga el script del juego (SIN type="module") -->
+    <!-- Carga el script del juego -->
     <script src="tetris.js"></script>
 </body>
 </html>
