@@ -1,41 +1,31 @@
-// import * as THREE from 'three'; // <--- ELIMINA ESTA LÍNEA
-
 // --- Configuración del Juego ---
 const COLS = 10;
 const ROWS = 20;
-const BLOCK_SIZE = 1; // Tamaño de cada cubo en la escena 3D
-const EMPTY_COLOR = 0x444444; // Color para celdas vacías (opcional, para el fondo visual)
+const BLOCK_SIZE = 1; // Tamaño de cada celda de la cuadrícula
 
 // --- Variables Globales ---
-// THREE ya estará disponible globalmente gracias al script en index.html
 let scene, camera, renderer;
-let board; // Array 2D para la lógica del juego (0 = vacío, >0 = color del bloque)
-let boardMeshes; // Array 2D para los meshes de Three.js en el tablero
-let currentPiece; // Objeto representando la pieza actual
+let board;
+let boardMeshes;
+let currentPiece;
 let score = 0;
 let gameOver = false;
 let gameLoopTimeout;
-let fallSpeed = 1000; // Milisegundos entre cada caída
+let fallSpeed = 1000;
 
 const scoreElement = document.getElementById('score');
 const gameOverElement = document.getElementById('game-over');
 
 // --- Definiciones de Piezas (Tetrominós) ---
 const PIECES = [
-    // I
-    { shape: [[1, 1, 1, 1]], color: 0xFF0000 }, // Rojo
-    // O
-    { shape: [[1, 1], [1, 1]], color: 0xFFFF00 }, // Amarillo
-    // T
-    { shape: [[0, 1, 0], [1, 1, 1]], color: 0x800080 }, // Púrpura
-    // S
-    { shape: [[0, 1, 1], [1, 1, 0]], color: 0x00FF00 }, // Verde
-    // Z
-    { shape: [[1, 1, 0], [0, 1, 1]], color: 0x0000FF }, // Azul
-    // J
-    { shape: [[1, 0, 0], [1, 1, 1]], color: 0xFF7F00 }, // Naranja
-    // L
-    { shape: [[0, 0, 1], [1, 1, 1]], color: 0x00FFFF }  // Cian
+    // Colores estándar de Tetris Guideline
+    { shape: [[1, 1, 1, 1]], color: 0x00FFFF }, // I (Cian)
+    { shape: [[1, 1], [1, 1]], color: 0xFFFF00 }, // O (Amarillo)
+    { shape: [[0, 1, 0], [1, 1, 1]], color: 0x800080 }, // T (Púrpura)
+    { shape: [[0, 1, 1], [1, 1, 0]], color: 0x00FF00 }, // S (Verde)
+    { shape: [[1, 1, 0], [0, 1, 1]], color: 0xFF0000 }, // Z (Rojo)
+    { shape: [[1, 0, 0], [1, 1, 1]], color: 0x0000FF }, // J (Azul)
+    { shape: [[0, 0, 1], [1, 1, 1]], color: 0xFF7F00 }  // L (Naranja)
 ];
 
 // --- Inicialización ---
@@ -45,9 +35,15 @@ function init() {
     scene.background = new THREE.Color(0x222222);
 
     // Cámara (Ortográfica)
+    // El tablero ahora va de X=0 a COLS*BS, Y=0 a -ROWS*BS
+    // Centraremos la cámara en medio de esta área.
+    const boardWidth = COLS * BLOCK_SIZE;
+    const boardHeight = ROWS * BLOCK_SIZE;
     const aspect = window.innerWidth / window.innerHeight;
+
     // Ajusta el tamaño de la vista para que quepa el tablero + un poco de margen
-    const frustumHeight = ROWS * BLOCK_SIZE + 2 * BLOCK_SIZE;
+    const verticalMargin = 2 * BLOCK_SIZE;
+    const frustumHeight = boardHeight + verticalMargin;
     const frustumWidth = frustumHeight * aspect;
 
     camera = new THREE.OrthographicCamera(
@@ -56,23 +52,21 @@ function init() {
         1, 1000
     );
 
-    // Ajustar posición de la cámara para centrar el tablero
-    // El centro del tablero lógico es (COLS/2, ROWS/2)
-    // El centro de la vista 3D es (0,0)
-    // Queremos mapear (COLS/2, ROWS/2) a (0,0) en la cámara
-    // Coordenadas Three.js: X es derecha, Y es arriba
-    // Coordenadas Tablero: X es derecha, Y es abajo
+    // Posiciona la cámara para que mire al centro del tablero
+    // Centro X = boardWidth / 2
+    // Centro Y = -boardHeight / 2 (porque Y va hacia abajo en el tablero lógico)
     camera.position.set(
-        (COLS * BLOCK_SIZE) / 2 - BLOCK_SIZE / 2, // Centrado X
-        -(ROWS * BLOCK_SIZE) / 2 + BLOCK_SIZE / 2, // Centrado Y (negativo)
+        boardWidth / 2,
+        -boardHeight / 2,
         10 // Distancia Z
     );
-    camera.lookAt( // Apuntar al mismo punto central para asegurar la orientación
-         (COLS * BLOCK_SIZE) / 2 - BLOCK_SIZE / 2,
-        -(ROWS * BLOCK_SIZE) / 2 + BLOCK_SIZE / 2,
+    // Asegurarse de que la cámara apunta exactamente al centro del tablero en Z=0
+    camera.lookAt(
+         boardWidth / 2,
+        -boardHeight / 2,
          0
     );
-    scene.add(camera); // Añadir cámara a la escena
+    scene.add(camera);
 
 
     // Renderer
@@ -81,27 +75,23 @@ function init() {
     document.body.appendChild(renderer.domElement);
 
     // Luces
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Un poco más de luz ambiente
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(5, 10, 7.5); // Posición de la luz
+    // Ajustar la posición de la luz relativa al centro del tablero
+    directionalLight.position.set(boardWidth / 2 + 5, -boardHeight / 2 + 10, 7.5);
     scene.add(directionalLight);
-
 
     // Crear el tablero lógico y visual
     createBoard();
-    createVisualBoard(); // Dibuja la cuadrícula/fondo
+    createVisualBoard(); // Dibuja la cuadrícula/fondo alineados
 
     // Iniciar el juego
-    resetGame(); // Llama a esto para configurar el estado inicial
+    resetGame();
 
     // Manejador de eventos de teclado
     document.addEventListener('keydown', handleKeyPress);
-
-    // Ajustar tamaño de ventana
     window.addEventListener('resize', onWindowResize, false);
-
-    // Empezar bucle de renderizado
     animate();
 }
 
@@ -112,40 +102,40 @@ function createBoard() {
 }
 
 function createVisualBoard() {
-    // Opcional: Plano de fondo sutil
-    const planeGeo = new THREE.PlaneGeometry(COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+    const boardWidth = COLS * BLOCK_SIZE;
+    const boardHeight = ROWS * BLOCK_SIZE;
+
+    // Plano de fondo
+    const planeGeo = new THREE.PlaneGeometry(boardWidth, boardHeight);
     const planeMat = new THREE.MeshStandardMaterial({ color: 0x333333, side: THREE.DoubleSide, roughness: 0.8 });
     const backgroundPlane = new THREE.Mesh(planeGeo, planeMat);
-    // Centrar el plano donde está el tablero
+    // Centrar el plano en el área del tablero (X=ancho/2, Y=-alto/2)
     backgroundPlane.position.set(
-         (COLS * BLOCK_SIZE) / 2 - BLOCK_SIZE / 2,
-        -(ROWS * BLOCK_SIZE) / 2 + BLOCK_SIZE / 2,
+         boardWidth / 2,
+        -boardHeight / 2,
         -BLOCK_SIZE // Ligeramente detrás de los bloques
     );
     scene.add(backgroundPlane);
 
-     // Crear cuadrícula visual
-    const gridMaterial = new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.5 });
+    // Cuadrícula visual - AHORA ALINEADA CON EL SISTEMA DE COORDENADAS DEL TABLERO
+    const gridMaterial = new THREE.LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.7 }); // Color más visible
     const points = [];
-    const startX = 0;
-    const endX = COLS * BLOCK_SIZE;
-    const startY = 0;
-    const endY = -ROWS * BLOCK_SIZE; // Y va hacia abajo
-
-    // Líneas horizontales
-    for (let i = 0; i <= ROWS; i++) {
-        points.push(new THREE.Vector3(startX, -i * BLOCK_SIZE, 0));
-        points.push(new THREE.Vector3(endX, -i * BLOCK_SIZE, 0));
-    }
-    // Líneas verticales
+    // Líneas verticales (en x = 0, BS, 2*BS, ..., COLS*BS)
     for (let j = 0; j <= COLS; j++) {
-        points.push(new THREE.Vector3(j * BLOCK_SIZE, startY, 0));
-        points.push(new THREE.Vector3(j * BLOCK_SIZE, endY, 0));
+        points.push(new THREE.Vector3(j * BLOCK_SIZE, 0, 0));              // Punto superior (Y=0)
+        points.push(new THREE.Vector3(j * BLOCK_SIZE, -boardHeight, 0)); // Punto inferior (Y=-alto)
     }
+    // Líneas horizontales (en y = 0, -BS, -2*BS, ..., -ROWS*BS)
+    for (let i = 0; i <= ROWS; i++) {
+        points.push(new THREE.Vector3(0, -i * BLOCK_SIZE, 0));           // Punto izquierdo (X=0)
+        points.push(new THREE.Vector3(boardWidth, -i * BLOCK_SIZE, 0)); // Punto derecho (X=ancho)
+    }
+
     const gridGeometry = new THREE.BufferGeometry().setFromPoints(points);
     const gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
-     // Ajustar posición de la cuadrícula para alinearla con los bloques
-     gridLines.position.set( -BLOCK_SIZE / 2, BLOCK_SIZE / 2, -BLOCK_SIZE/2 + 0.01 ); // Ligeramente delante del fondo
+    // La cuadrícula ahora se dibuja desde (0,0) hasta (ancho, -alto), así que no necesita desplazamiento.
+    // Solo una pequeña Z para estar delante del fondo.
+    gridLines.position.set(0, 0, -BLOCK_SIZE / 2 + 0.01);
     scene.add(gridLines);
 }
 
@@ -154,58 +144,62 @@ function createVisualBoard() {
 function getRandomPiece() {
     const index = Math.floor(Math.random() * PIECES.length);
     const pieceData = PIECES[index];
-    // Clonar la forma para evitar modificaciones accidentales al original
     const shapeClone = pieceData.shape.map(row => row.slice());
     return {
         x: Math.floor(COLS / 2) - Math.floor(shapeClone[0].length / 2),
-        y: 0, // Empezar arriba
+        y: 0, // Empezar arriba (fila lógica 0)
         shape: shapeClone,
         color: pieceData.color,
-        mesh: null // El mesh 3D se creará al dibujarla
+        mesh: null
     };
 }
 
+// Geometría y material base para los bloques (reutilizables)
+const blockGeometry = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95); // Ligeramente más pequeño
+const edgeGeometry = new THREE.EdgesGeometry(blockGeometry);
+const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+
 function drawPiece() {
+    // Limpiar mesh anterior
     if (currentPiece.mesh) {
         scene.remove(currentPiece.mesh);
-        // Limpiar geometría y material del grupo anterior si es necesario para liberar memoria
-        currentPiece.mesh.children.forEach(child => {
-             if (child.geometry) child.geometry.dispose();
-             // Los materiales se pueden reutilizar, pero si creas uno nuevo cada vez, también deberías desecharlos
-             // if (child.material) child.material.dispose();
-        });
+        // Limpiar hijos (bloques y bordes) - IMPORTANTE para liberar memoria
+        while(currentPiece.mesh.children.length > 0){
+            let child = currentPiece.mesh.children[0];
+            currentPiece.mesh.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            // No desechamos materiales básicos si los reutilizamos (como edgeMaterial)
+            // Si creas materiales específicos por pieza, sí deberías desecharlos aquí.
+        }
     }
 
     const pieceGroup = new THREE.Group();
-    // Crear una geometría y material reutilizables para los bloques de esta pieza
-    const geometry = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95); // Un poco más pequeño para ver separación
-    const material = new THREE.MeshStandardMaterial({
+    // Crear un material específico para esta pieza (basado en su color)
+    const pieceMaterial = new THREE.MeshStandardMaterial({
         color: currentPiece.color,
         roughness: 0.4,
         metalness: 0.1
-     });
-    // Añadir un borde ligero
-    const edgesGeometry = new THREE.EdgesGeometry(geometry);
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
-
+    });
 
     currentPiece.shape.forEach((row, dy) => {
         row.forEach((value, dx) => {
             if (value) {
-                const blockMesh = new THREE.Mesh(geometry, material);
-                blockMesh.position.set(
-                    (currentPiece.x + dx) * BLOCK_SIZE,
-                    -(currentPiece.y + dy) * BLOCK_SIZE, // Y invertida
-                    0 // Posición Z
-                );
-                // Ajustar origen para que el centro esté en el centro del bloque
-                blockMesh.position.x += BLOCK_SIZE / 2;
-                blockMesh.position.y -= BLOCK_SIZE / 2; // Y va hacia arriba en Three.js
+                // --- NUEVO CÁLCULO DE POSICIÓN ---
+                // La celda (boardX, boardY) corresponde a la columna 'c' y fila 'r'
+                // c = currentPiece.x + dx
+                // r = currentPiece.y + dy
+                // El centro X de la celda 'c' es (c + 0.5) * BLOCK_SIZE
+                // El centro Y de la celda 'r' es -(r + 0.5) * BLOCK_SIZE (negativo por Y invertida)
+                const blockX = (currentPiece.x + dx + 0.5) * BLOCK_SIZE;
+                const blockY = -(currentPiece.y + dy + 0.5) * BLOCK_SIZE;
 
+                // Crear el mesh del bloque
+                const blockMesh = new THREE.Mesh(blockGeometry, pieceMaterial);
+                blockMesh.position.set(blockX, blockY, 0);
                 pieceGroup.add(blockMesh);
 
-                // Añadir bordes
-                const wireframe = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+                // Añadir bordes (usando el mismo cálculo de posición)
+                const wireframe = new THREE.LineSegments(edgeGeometry, edgeMaterial);
                 wireframe.position.copy(blockMesh.position); // Copiar posición
                 pieceGroup.add(wireframe);
             }
@@ -218,54 +212,54 @@ function drawPiece() {
 
 
 function drawBoard() {
-     // Limpiar meshes antiguos del tablero
+    // Limpiar meshes antiguos del tablero
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             if (boardMeshes[r][c]) {
-                scene.remove(boardMeshes[r][c]);
-                 // Limpiar geometría y material
-                if (boardMeshes[r][c].geometry) boardMeshes[r][c].geometry.dispose();
-                if (boardMeshes[r][c].material) boardMeshes[r][c].material.dispose();
-                 // Si tiene hijos (como los bordes), también eliminarlos
-                boardMeshes[r][c].children.forEach(child => {
+                let meshGroup = boardMeshes[r][c];
+                 scene.remove(meshGroup);
+                 // Limpiar hijos (bloque y borde)
+                 while(meshGroup.children.length > 0){
+                     let child = meshGroup.children[0];
+                     meshGroup.remove(child);
                      if (child.geometry) child.geometry.dispose();
-                     if (child.material) child.material.dispose();
-                });
+                     if (child.material && child.material !== edgeMaterial) { // No desechar material de borde compartido
+                         child.material.dispose();
+                     }
+                 }
                 boardMeshes[r][c] = null;
             }
         }
     }
 
     // Crear nuevos meshes basados en el estado lógico del tablero
-    const geometry = new THREE.BoxGeometry(BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95, BLOCK_SIZE * 0.95);
-    const edgesGeometry = new THREE.EdgesGeometry(geometry);
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
-
-
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             if (board[r][c]) { // Si la celda no está vacía
-                const material = new THREE.MeshStandardMaterial({
+                // Crear material específico para este bloque fijo
+                 const blockMaterial = new THREE.MeshStandardMaterial({
                     color: board[r][c], // Usar el color guardado
                     roughness: 0.4,
                     metalness: 0.1
                 });
-                const blockMesh = new THREE.Mesh(geometry, material);
-                blockMesh.position.set(
-                    c * BLOCK_SIZE + BLOCK_SIZE / 2,
-                    -r * BLOCK_SIZE - BLOCK_SIZE / 2, // Invertir Y y ajustar centro
-                    0
-                );
 
-                // Crear un grupo para el bloque y su borde
+                // --- NUEVO CÁLCULO DE POSICIÓN ---
+                // Centro X de la celda 'c' = (c + 0.5) * BLOCK_SIZE
+                // Centro Y de la celda 'r' = -(r + 0.5) * BLOCK_SIZE
+                const blockX = (c + 0.5) * BLOCK_SIZE;
+                const blockY = -(r + 0.5) * BLOCK_SIZE;
+
+                // Crear mesh y borde
+                const blockMesh = new THREE.Mesh(blockGeometry, blockMaterial);
+                blockMesh.position.set(blockX, blockY, 0);
+
+                const wireframe = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+                wireframe.position.copy(blockMesh.position);
+
+                // Agrupar bloque y borde
                 const blockGroup = new THREE.Group();
                 blockGroup.add(blockMesh);
-
-                 // Añadir bordes
-                const wireframe = new THREE.LineSegments(edgesGeometry, edgeMaterial);
-                wireframe.position.copy(blockMesh.position); // Copiar posición
                 blockGroup.add(wireframe);
-
 
                 scene.add(blockGroup);
                 boardMeshes[r][c] = blockGroup; // Guardar referencia al grupo
@@ -279,26 +273,27 @@ function drawBoard() {
 function isValidMove(newX, newY, pieceShape) {
     for (let y = 0; y < pieceShape.length; y++) {
         for (let x = 0; x < pieceShape[y].length; x++) {
-            if (pieceShape[y][x]) { // Si es un bloque de la pieza
-                const boardX = newX + x;
-                const boardY = newY + y;
+            if (pieceShape[y][x]) {
+                const boardX = newX + x; // Columna lógica
+                const boardY = newY + y; // Fila lógica
 
-                // 1. Comprobar límites laterales e inferior del tablero
-                if (boardX < 0 || boardX >= COLS || boardY >= ROWS) {
+                // 1. Límites laterales (columnas 0 a COLS-1)
+                if (boardX < 0 || boardX >= COLS) {
                     return false;
                 }
-                // 2. Comprobar límite superior (no debería pasar, pero por seguridad)
-                if (boardY < 0) {
-                   continue; // Permite que partes de la pieza estén por encima al inicio
+                // 2. Límite inferior (filas 0 a ROWS-1)
+                if (boardY >= ROWS) {
+                    return false;
                 }
-                // 3. Comprobar colisión con bloques existentes
-                if (board[boardY][boardX]) {
+                // 3. Límite superior (fila < 0 está bien mientras la pieza desciende)
+                // 4. Colisión con bloques existentes (solo si estamos dentro del tablero Y>=0)
+                if (boardY >= 0 && board[boardY][boardX]) {
                     return false;
                 }
             }
         }
     }
-    return true; // Movimiento válido
+    return true;
 }
 
 function movePiece(dx, dy) {
@@ -309,16 +304,15 @@ function movePiece(dx, dy) {
     if (isValidMove(newX, newY, currentPiece.shape)) {
         currentPiece.x = newX;
         currentPiece.y = newY;
-        drawPiece(); // Redibujar la pieza en la nueva posición
-        return true; // Movimiento exitoso
+        drawPiece(); // Redibujar en la nueva posición lógica (el cálculo interno la posicionará visualmente)
+        return true;
     }
-    return false; // Colisión
+    return false;
 }
 
 function rotatePiece() {
      if (gameOver) return;
-    // Clonar la forma actual para no modificarla si la rotación falla
-    const originalShape = currentPiece.shape.map(row => row.slice());
+    const originalShape = currentPiece.shape.map(row => row.slice()); // Clonar por si falla
     const shape = currentPiece.shape;
     const N = shape.length;
     const M = shape[0].length;
@@ -331,30 +325,27 @@ function rotatePiece() {
         }
     }
 
-    // Comprobar si la rotación es válida en la posición actual
-    if (isValidMove(currentPiece.x, currentPiece.y, newShape)) {
-        currentPiece.shape = newShape;
-        drawPiece();
-        return; // Rotación exitosa
+    // Comprobar validez y "wall kicks" simples
+    let potentialX = currentPiece.x;
+    if (isValidMove(potentialX, currentPiece.y, newShape)) {
+        // Válido en la posición actual
+    } else if (isValidMove(potentialX + 1, currentPiece.y, newShape)) {
+        potentialX++; // Kick derecha
+    } else if (isValidMove(potentialX - 1, currentPiece.y, newShape)) {
+         potentialX--; // Kick izquierda
+    } else if (isValidMove(potentialX + 2, currentPiece.y, newShape)) { // Kick doble (para pieza I)
+         potentialX += 2;
+    } else if (isValidMove(potentialX - 2, currentPiece.y, newShape)) { // Kick doble (para pieza I)
+         potentialX -= 2;
+    }
+     else {
+        return; // No se pudo rotar ni con kicks
     }
 
-    // Intentos de "wall kick" simples (mover 1 unidad a izq/der)
-    if (isValidMove(currentPiece.x + 1, currentPiece.y, newShape)) {
-        currentPiece.x++;
-        currentPiece.shape = newShape;
-        drawPiece();
-        return;
-    }
-     if (isValidMove(currentPiece.x - 1, currentPiece.y, newShape)) {
-         currentPiece.x--;
-         currentPiece.shape = newShape;
-         drawPiece();
-         return;
-    }
-    // Si llegamos aquí, la rotación (con kicks simples) falló, restaurar forma original
-    // (No es estrictamente necesario ya que no modificamos currentPiece.shape si falla,
-    // pero es buena práctica si la lógica fuera más compleja)
-    currentPiece.shape = originalShape;
+    // Aplicar rotación y posible desplazamiento
+    currentPiece.x = potentialX;
+    currentPiece.shape = newShape;
+    drawPiece();
 }
 
 // --- Lógica del Juego ---
@@ -364,6 +355,7 @@ function placePiece() {
             if (value) {
                 const boardX = currentPiece.x + dx;
                 const boardY = currentPiece.y + dy;
+                // Solo añadir al tablero si está dentro de los límites verticales lógicos
                 if (boardY >= 0 && boardY < ROWS && boardX >= 0 && boardX < COLS) {
                      board[boardY][boardX] = currentPiece.color;
                 }
@@ -371,18 +363,21 @@ function placePiece() {
         });
     });
 
-    if (currentPiece.mesh) {
-        scene.remove(currentPiece.mesh);
-         // Limpiar meshes de la pieza activa
-         currentPiece.mesh.children.forEach(child => {
-             if (child.geometry) child.geometry.dispose();
-             // Materiales podrían reutilizarse si fueran complejos
-             // if (child.material) child.material.dispose();
-         });
+    // Eliminar la pieza activa de la escena (su mesh)
+     if (currentPiece.mesh) {
+         scene.remove(currentPiece.mesh);
+          // Limpiar hijos (bloques y bordes)
+        while(currentPiece.mesh.children.length > 0){
+            let child = currentPiece.mesh.children[0];
+            currentPiece.mesh.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            // No desechar materiales globales
+        }
     }
-    currentPiece = null; // No hay pieza activa
+    currentPiece = null;
 
-    drawBoard(); // Redibuja el tablero completo con la pieza ya fijada
+    // Redibujar el tablero con la pieza fijada (drawBoard usa la lógica actualizada)
+    drawBoard();
 }
 
 
@@ -390,7 +385,6 @@ function clearLines() {
     let linesCleared = 0;
     let rowsToRemove = [];
 
-    // Identificar filas completas
     for (let r = ROWS - 1; r >= 0; r--) {
         if (board[r].every(cell => cell > 0)) {
             linesCleared++;
@@ -399,8 +393,7 @@ function clearLines() {
     }
 
     if (linesCleared > 0) {
-        // Eliminar filas completas del tablero lógico
-        // Es más eficiente eliminar de abajo hacia arriba o usar filter
+        // Eliminar filas completas (filtrando las que no están en rowsToRemove)
         board = board.filter((row, index) => !rowsToRemove.includes(index));
 
         // Añadir filas vacías al principio
@@ -409,94 +402,109 @@ function clearLines() {
         }
 
         // Actualizar puntuación
-        score += linesCleared * 100 * linesCleared; // Puntuación exponencial simple
+        const points = [0, 100, 300, 500, 800]; // Puntos por 1, 2, 3, 4 líneas
+        score += points[linesCleared] || 0; // Usar lookup o 0 si linesCleared es 0 o >4
         scoreElement.textContent = `Score: ${score}`;
 
-        // Redibujar el tablero visual
-        drawBoard(); // Redibuja todo el tablero lógico actualizado
+        // Redibujar el tablero visual completamente
+        drawBoard();
 
-         // Opcional: Aumentar velocidad
-         fallSpeed = Math.max(150, fallSpeed - linesCleared * 15); // Acelera un poco más
+        // Aumentar velocidad
+        fallSpeed = Math.max(150, fallSpeed - linesCleared * 20); // Ajustar aceleración
+        console.log("New Fall Speed:", fallSpeed);
     }
 }
 
 
 function checkGameOver() {
-    // El game over ocurre si una nueva pieza colisiona inmediatamente
-    // Esto se comprueba justo después de crear la nueva pieza
+    // Si la nueva pieza colisiona inmediatamente al generarse en su posición inicial
     if (!isValidMove(currentPiece.x, currentPiece.y, currentPiece.shape)) {
         gameOver = true;
-        gameOverElement.style.display = 'block';
-        if (gameLoopTimeout) clearTimeout(gameLoopTimeout);
+        gameOverElement.style.display = 'block'; // Mostrar mensaje
+        if (gameLoopTimeout) clearTimeout(gameLoopTimeout); // Detener caídas
         console.log("Game Over! Final Score:", score);
-        // Opcional: Podrías poner los bloques de la última pieza en gris o algo
+         // Opcional: Hacer la última pieza semi-transparente o gris
+         if(currentPiece.mesh) {
+             currentPiece.mesh.children.forEach(child => {
+                 if (child.material && child.material.color) {
+                     //child.material.color.setHex(0x888888);
+                     child.material.opacity = 0.5;
+                     child.material.transparent = true;
+                 }
+             });
+         }
     }
 }
 
 function gameLoop() {
     if (gameOver) return;
 
-    // Intenta mover la pieza hacia abajo
-    if (!movePiece(0, 1)) {
-        // Si no pudo moverse (colisión o llegó al fondo)
-        placePiece();        // 1. Fija la pieza en el tablero
-        clearLines();        // 2. Revisa y limpia líneas completas
-        currentPiece = getRandomPiece(); // 3. Genera la siguiente pieza
-        drawPiece();         // 4. Dibuja la nueva pieza
-        checkGameOver();     // 5. Comprueba si el juego terminó con la nueva pieza
+    if (!movePiece(0, 1)) { // Intenta mover hacia abajo
+        // Si no puede moverse (colisión o fondo)
+        placePiece();
+        clearLines(); // Esto puede actualizar el tablero visualmente
+        currentPiece = getRandomPiece();
+        drawPiece(); // Dibuja la nueva pieza
+        checkGameOver(); // Comprueba si la nueva pieza causa Game Over
     }
 
-    // Programa la siguiente caída si el juego no ha terminado
+    // Programa la siguiente caída si el juego continúa
     if (!gameOver) {
-        // Limpia el timeout anterior por si acaso (ej. si se aceleró con flecha abajo)
-        if (gameLoopTimeout) clearTimeout(gameLoopTimeout);
+        if (gameLoopTimeout) clearTimeout(gameLoopTimeout); // Limpiar anterior por si acaso
         gameLoopTimeout = setTimeout(gameLoop, fallSpeed);
     }
 }
 
 function resetGame() {
     console.log("Reiniciando juego...");
-    // Limpiar timeouts pendientes
     if (gameLoopTimeout) clearTimeout(gameLoopTimeout);
 
     // Limpiar tablero lógico y visual
-    createBoard(); // Reinicia el array lógico
-    drawBoard(); // Limpia y redibuja el tablero visual vacío (o con fondo/cuadrícula)
+    createBoard(); // Reinicia array lógico
+    drawBoard(); // Limpia meshes existentes y redibuja (ahora estará vacío)
 
     score = 0;
     scoreElement.textContent = `Score: ${score}`;
     fallSpeed = 1000; // Resetear velocidad
     gameOver = false;
-    gameOverElement.style.display = 'none';
+    gameOverElement.style.display = 'none'; // Ocultar mensaje
 
-    // Eliminar pieza actual si existe de la escena
+    // Eliminar pieza actual de la escena si existe
     if (currentPiece && currentPiece.mesh) {
         scene.remove(currentPiece.mesh);
-        // Limpiar recursos de la pieza vieja
-         currentPiece.mesh.children.forEach(child => {
-             if (child.geometry) child.geometry.dispose();
-             // if (child.material) child.material.dispose();
-         });
+         while(currentPiece.mesh.children.length > 0){ // Limpiar recursos
+            let child = currentPiece.mesh.children[0];
+            currentPiece.mesh.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            // No desechar mat globales
+        }
         currentPiece = null;
     }
 
-    // Crear y dibujar la primera pieza del nuevo juego
+    // Crear y dibujar la primera pieza
     currentPiece = getRandomPiece();
-    drawPiece(); // Dibuja la pieza inicial
+    drawPiece();
 
-    // Iniciar el bucle del juego
+    // Iniciar el bucle
     gameLoop();
 }
 
 
 // --- Manejadores de Eventos ---
 function handleKeyPress(event) {
-     // Prevenir scroll de página con flechas
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-        event.preventDefault();
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) {
+        event.preventDefault(); // Prevenir scroll con flechas y espacio
     }
 
-    if (gameOver) return;
+    // Si el juego ha terminado, solo permitir reiniciar (si hubiera un botón de reinicio general)
+    if (gameOver) {
+        // Podrías añadir aquí que si pulsa 'Enter' o 'R' se reinicie
+        // if (event.key === 'Enter' || event.key === 'r') {
+        //     reiniciarJuego();
+        // }
+        return;
+    }
+
 
     switch (event.key) {
         case 'ArrowLeft':
@@ -506,16 +514,16 @@ function handleKeyPress(event) {
             movePiece(1, 0);
             break;
         case 'ArrowDown':
-             // Mover hacia abajo más rápido
+             // Acelerar caída
              if (movePiece(0, 1)) {
-                 // Si se movió, reseteamos el timer de caída para que la bajada sea más controlada
+                 // Bonus por bajar rápido (opcional)
+                 score += 1;
+                 scoreElement.textContent = `Score: ${score}`;
+                 // Reiniciar timer para que no acumule velocidad extraña
                  clearTimeout(gameLoopTimeout);
                  gameLoopTimeout = setTimeout(gameLoop, fallSpeed);
-                 // Opcional: añadir un pequeño bonus de puntos por bajar rápido
-                 // score += 1;
-                 // scoreElement.textContent = `Score: ${score}`;
              } else {
-                 // Si no se pudo mover (ya tocó fondo), forzar el ciclo de colocar/nueva pieza
+                 // Si no pudo bajar más, forzar ciclo de colocar/nueva pieza
                  clearTimeout(gameLoopTimeout);
                  gameLoop();
              }
@@ -523,30 +531,31 @@ function handleKeyPress(event) {
         case 'ArrowUp':
             rotatePiece();
             break;
-         // Podrías añadir ' ' (espacio) para hard drop
-         /*
-         case ' ':
-             while(movePiece(0, 1)) {
-                 // Sigue bajando hasta que no pueda más
-             }
-             // Forzar ciclo de colocar/nueva pieza inmediatamente
-             clearTimeout(gameLoopTimeout);
-             gameLoop();
-             break;
-         */
+        case ' ': // Hard Drop (Espacio)
+            while(movePiece(0, 1)) {
+                 score += 2; // Bonus por hard drop
+            }
+            scoreElement.textContent = `Score: ${score}`;
+            // Forzar ciclo de colocar/nueva pieza inmediatamente
+            clearTimeout(gameLoopTimeout);
+            gameLoop();
+            break;
     }
 }
 
 function onWindowResize() {
     const aspect = window.innerWidth / window.innerHeight;
-    const frustumHeight = ROWS * BLOCK_SIZE + 2 * BLOCK_SIZE;
+    const boardHeight = ROWS * BLOCK_SIZE;
+    const verticalMargin = 2 * BLOCK_SIZE;
+    const frustumHeight = boardHeight + verticalMargin;
     const frustumWidth = frustumHeight * aspect;
 
+    // Actualizar límites de la cámara ortográfica
     camera.left = frustumWidth / -2;
     camera.right = frustumWidth / 2;
     camera.top = frustumHeight / 2;
     camera.bottom = frustumHeight / -2;
-    camera.updateProjectionMatrix(); // Actualizar matriz de proyección
+    camera.updateProjectionMatrix(); // ¡Importante!
 
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
@@ -555,7 +564,6 @@ function onWindowResize() {
 // --- Bucle de Animación ---
 function animate() {
     requestAnimationFrame(animate);
-    // Solo renderizar, la lógica del juego va en gameLoop con setTimeout
     renderer.render(scene, camera);
 }
 
