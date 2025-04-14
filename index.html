@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tetris 3D con Three.js</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #222; }
+        canvas { display: block; }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: sans-serif;
+            font-size: 24px;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            font-family: sans-serif;
+            font-size: 48px;
+            display: none; /* Oculto inicialmente */
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+         #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: lightgray;
+            font-family: sans-serif;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <div id="game-over">
+        GAME OVER
+        <br>
+        <button onclick="reiniciarJuego()">Reiniciar</button>
+    </div>
+     <div id="instructions">
+        Controles: Flechas Izq/Der: Mover | Flecha Abajo: Acelerar | Flecha Arriba: Rotar
+    </div>
+
+    <!-- Incluye Three.js desde un CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module" src="tetris.js"></script>
+</body>
+</html>
